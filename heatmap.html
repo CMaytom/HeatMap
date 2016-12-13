@@ -1,0 +1,134 @@
+<!--
+This is an example page to display a heatmap of the petty theft data in San Diego for the year 2016.
+-->
+<body style="height:100%;margin:0;padding:0;">
+  <div id="map" style="height: 100%;"></div>
+  <script src="https://www.gstatic.com/firebasejs/3.6.1/firebase.js"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAorLHj20CgiyVNvYqbWcMmhjvuzQDxATE&libraries=visualization,geometry"></script>
+  <script>
+    // Initialize Firebase
+    var config = {
+      apiKey: "AIzaSyC4j7iw__KSvRGIEydRJs97Vvg0ne4wWOc",
+      authDomain: "bikeparking-4361a.firebaseapp.com",
+      databaseURL: "https://bikeparking-4361a.firebaseio.com",
+      storageBucket: "bikeparking-4361a.appspot.com",
+      messagingSenderId: "306460985288"
+    };
+    firebase.initializeApp(config);
+
+    // load the data once and call initMap() function on the json file
+    var ref = firebase.database().ref('/pettyTheft')
+    ref.once('value', (snapshot)=>{
+    		initMap(snapshot.val())
+    	}
+    	,(error)=>{console.log(error)}
+    )
+  </script>
+  <script>
+    var TILE_SIZE = 256;
+
+      //Mercator --BEGIN--
+      
+      // bounds value in between the min and max
+      function bound(value, opt_min, opt_max) {
+          if (opt_min !== null) value = Math.max(value, opt_min);
+          if (opt_max !== null) value = Math.min(value, opt_max);
+          return value;
+      }
+  
+      // converts degrees to radians
+      function degreesToRadians(deg) {
+          return deg * (Math.PI / 180);
+      }
+
+      // converts radians to degrees
+      function radiansToDegrees(rad) {
+          return rad / (Math.PI / 180);
+      }
+
+      function MercatorProjection() {
+          this.pixelOrigin_ = new google.maps.Point(TILE_SIZE / 2,
+          TILE_SIZE / 2);
+          this.pixelsPerLonDegree_ = TILE_SIZE / 360;
+          this.pixelsPerLonRadian_ = TILE_SIZE / (2 * Math.PI);
+      }
+
+      MercatorProjection.prototype.fromLatLngToPoint = function (latLng,
+      opt_point) {
+          var me = this;
+          var point = opt_point || new google.maps.Point(0, 0);
+          var origin = me.pixelOrigin_;
+
+          point.x = origin.x + latLng.lng() * me.pixelsPerLonDegree_;
+
+          // NOTE(appleton): Truncating to 0.9999 effectively limits latitude to
+          // 89.189.  This is about a third of a tile past the edge of the world
+          // tile.
+          var siny = bound(Math.sin(degreesToRadians(latLng.lat())), - 0.9999,
+          0.9999);
+          point.y = origin.y + 0.5 * Math.log((1 + siny) / (1 - siny)) * -me.pixelsPerLonRadian_;
+          return point;
+      };
+
+      MercatorProjection.prototype.fromPointToLatLng = function (point) {
+          var me = this;
+          var origin = me.pixelOrigin_;
+          var lng = (point.x - origin.x) / me.pixelsPerLonDegree_;
+          var latRadians = (point.y - origin.y) / -me.pixelsPerLonRadian_;
+          var lat = radiansToDegrees(2 * Math.atan(Math.exp(latRadians)) - Math.PI / 2);
+          return new google.maps.LatLng(lat, lng);
+      };
+
+      //Mercator --END--
+  </script>
+  <script>
+    var desiredRadiusPerPointInMeters = 125;
+    
+      // changes radius based upon zoom to decrease in size when zooming out
+      function getNewRadius() {
+          var numTiles = 1 << map.getZoom();
+          var center = map.getCenter();
+          var moved = google.maps.geometry.spherical.computeOffset(center, 10000, 90); /*1000 meters to the right*/
+          var projection = new MercatorProjection();
+          var initCoord = projection.fromLatLngToPoint(center);
+          var endCoord = projection.fromLatLngToPoint(moved);
+          var initPoint = new google.maps.Point(
+            initCoord.x * numTiles,
+            initCoord.y * numTiles);
+           var endPoint = new google.maps.Point(
+            endCoord.x * numTiles,
+            endCoord.y * numTiles);
+        var pixelsPerMeter = (Math.abs(initPoint.x-endPoint.x))/10000.0;
+        var totalPixelSize = Math.floor(desiredRadiusPerPointInMeters*pixelsPerMeter);
+        console.log(totalPixelSize);
+        return totalPixelSize;
+
+      }
+
+    var map, heatmap;
+
+    // load all the data locations onto the map
+    function initMap(data){
+      var points = []
+      points = data.map((val)=>new google.maps.LatLng(parseFloat(val.lat),parseFloat(val.long)))
+
+      map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 15,
+        center: {lat: 32.717284, lng: -117.147042},
+        mapTypeId: 'satellite'
+      })
+
+      heatmap = new google.maps.visualization.HeatmapLayer({
+        data: points,
+        map: map,
+        radius:getNewRadius(),
+        maxIntensity: 100
+      })
+
+      // event listener to change radius on zoom change
+      google.maps.event.addListener(map, 'zoom_changed', function () {
+              heatmap.setOptions({radius:getNewRadius()});
+          });
+    }
+  </script>
+</body>
